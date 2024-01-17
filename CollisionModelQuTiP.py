@@ -24,9 +24,21 @@ def Hxyz(N, Jx, Jy, Jz, b, periodic=False):
             Ham += J_list[j]*tensor(spin_list)
     return Ham
 
-def collision_model_dynamics(N, rho_S_0, rho_A, expec_list, H_A, H_S, H_int, t, gamma, dt):
+def collision_model_dynamics(num_col, rho_S_0, rho_A, expec_list, H_S, H_int, t, gamma, dt):
     """Simulates collision model dynamics and returns expectation values at each step"""
+    rho_S = rho_S_0
     state = tensor(rho_S_0, rho_A)
+    H_col = tensor(H_S, qeye(2)) + H_int
+    free_steps = np.ceil(np.random.exponential(gamma/dt, size = num_col))
+    col_step = int(np.ceil(t/dt))
+
+    times_free = np.linspace(dt, free_steps[0]*dt, int(free_steps[0]))
+    times_col = np.linspace(dt, col_step*dt, col_step)
+
+    res_free = mesolve(H_S, rho_S, times_free, [], [])
+    res_col = mesolve(H_col, state, times_col, [], [])
+    return res_col
+
     
 
 
@@ -44,13 +56,18 @@ timestep = 0.01
 
 num_spins = 4
 
-psi_0 = rand_ket_haar(2 ** num_spins)
+psi_0 = tensor([rand_ket_haar(2) for _ in range(num_spins)])
 rho_S_0 = psi_0 * psi_0.dag()
-
 rho_A = basis(2,0) * basis(2,0).dag()
 
-expec_list = [tensor([sigmax() if k == i else qeye(2) for k in range(num_spins)]) for i in range(num_spins)]
+expec_list = [tensor([sigmax() if k == i else qeye(2) for k in range(num_spins)]) 
+              for i in range(num_spins)]
 
 H_S = -Hxyz(num_spins, J, J*gamma, J*Delta, bfield, periodic=True)
+H_SA = 0.5*(tensor(sigmax(), *[qeye(2) for _ in range(num_spins - 1)], sigmax()) 
+          + tensor(sigmay(), *[qeye(2) for _ in range(num_spins - 1)], sigmay()))
 
-print(expec_list[0])
+out = collision_model_dynamics(num_collision, rho_S_0, rho_A, expec_list, H_S, H_SA, collision_duration, gamma, timestep)
+
+print(out.states[-1])
+#print(np.average(out), gamma/timestep)
